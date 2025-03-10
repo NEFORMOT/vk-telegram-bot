@@ -34,9 +34,11 @@ jobs:
         run: python bot.py
 
       - name: Commit and push state
-        run: |
-          git config --global user.email "bot@example.com"
-          git config --global user.name "Bot"
-          git add state.json
-          git commit -m "Update state.json" || echo "No changes to commit"
-          git push origin main
+  run: |
+    git config --global user.email "bot@example.com"
+    git config --global user.name "Bot"
+    git add state.json || echo "No state.json to add"
+    git commit -m "Update state.json" || echo "No changes to commit"
+    git push origin main
+  env:
+    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
