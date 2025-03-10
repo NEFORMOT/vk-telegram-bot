@@ -1,20 +1,37 @@
-name: Run VK Telegram Bot
+name: Bot Workflow
 
 on:
   schedule:
-    - cron: '*/5 * * * *'  # Проверка каждые 5 минут
-  workflow_dispatch:  # Добавляем принудительный запуск
+    - cron: '*/5 * * * *'  # Проверка каждые 5 минут (можно настроить реже, если не нужно так часто)
+  workflow_dispatch:
+    inputs:
+      compliment-type:
+        description: 'Type of compliment to send (optional)'
+        required: false
+        default: ''
+        options:
+          - ''
+          - weekly
+          - client_interactions
+          - tattoo_ideas
+          - equipment_and_studio
 
 jobs:
   bot:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v3
+        with:
+          repository: NEFORMOT/vk-telegram-bot
+          token: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/setup-python@v4
         with:
           python-version: '3.x'
-      - run: pip install -r requirements.txt
-      - run: python bot.py
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run bot
+        run: |
+          python bot.py ${{ github.event.inputs.compliment-type && '--compliment-type ' + github.event.inputs.compliment-type || '' }}
         env:
           VK_TOKEN: ${{ secrets.VK_TOKEN }}
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
@@ -23,7 +40,7 @@ jobs:
           CHAT_ID_HER: ${{ secrets.CHAT_ID_HER }}
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           YNDX_API_KEY: ${{ secrets.YNDX_API_KEY }}
-      - name: Commit and push state
+      - name: Commit state
         run: |
           git config --global user.email "bot@example.com"
           git config --global user.name "Bot"
