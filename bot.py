@@ -47,16 +47,22 @@ def load_state():
             "appointment_compliments_used": []
         }
 
+import subprocess
+
 def save_state(state):
     logging.info("Сохранение состояния в файл...")
     try:
         with open(Config.STATE_FILE, 'w', encoding='utf-8') as f:
             json.dump(state, f, indent=4)
-        # Сохранение в репозиторий
-        os.system(f'git add {Config.STATE_FILE}')
-os.system(f'git commit -m "Update {Config.STATE_FILE}"')
-os.system('git push origin main')
-        logging.info("Состояние успешно сохранено")
+        subprocess.run(['git', 'config', '--global', 'user.email', 'bot@example.com'], check=True)
+        subprocess.run(['git', 'config', '--global', 'user.name', 'Bot'], check=True)
+        subprocess.run(['git', 'add', Config.STATE_FILE], check=True)
+        result = subprocess.run(['git', 'commit', '-m', f'Update {Config.STATE_FILE}'], capture_output=True, text=True)
+        if result.returncode == 0:
+            subprocess.run(['git', 'push', 'origin', 'main'], check=True)
+            logging.info("Состояние успешно сохранено")
+        else:
+            logging.info("Нет изменений для коммита")
     except Exception as e:
         logging.error(f"Ошибка сохранения состояния: {e}")
 
