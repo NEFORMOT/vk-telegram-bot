@@ -1,4 +1,6 @@
 import os
+import schedule
+import time
 import sys
 import json
 import random
@@ -51,11 +53,9 @@ def save_state(state):
         with open(Config.STATE_FILE, 'w', encoding='utf-8') as f:
             json.dump(state, f, indent=4)
         # Сохранение в репозиторий
-        os.system('git config --global user.email "bot@example.com"')
-        os.system('git config --global user.name "Bot"')
-        os.system('git add state.json')
-        os.system('git commit -m "Update state.json"')
-        os.system('git push origin main')
+        os.system(f'git add {Config.STATE_FILE}')
+os.system(f'git commit -m "Update {Config.STATE_FILE}"')
+os.system('git push origin main')
         logging.info("Состояние успешно сохранено")
     except Exception as e:
         logging.error(f"Ошибка сохранения состояния: {e}")
