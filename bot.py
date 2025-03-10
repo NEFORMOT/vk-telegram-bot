@@ -1,23 +1,18 @@
 import os
 import sys
-import threading
-import time
 import json
 import random
 import logging
-from flask import Flask
 import requests
 from datetime import datetime
-import schedule
 from config import Config
 from image_analyzer import ImageAnalyzer
 from keywords import sketch_keywords, tattoo_keywords, in_progress_keywords, equipment_keywords, appointment_keywords, equipment_and_studio_keywords
-from compliments import (weekly_compliments, sketch_compliments,
-                        tattoo_compliments, in_progress_compliments,
-                        equipment_compliments, appointment_compliments,
-                        client_interactions_compliments,
-                        tattoo_ideas_compliments,
-                        equipment_and_studio_compliments, no_photo_message)
+from compliments import (
+    weekly_compliments, sketch_compliments, tattoo_compliments, in_progress_compliments,
+    equipment_compliments, appointment_compliments, client_interactions_compliments,
+    tattoo_ideas_compliments, equipment_and_studio_compliments, no_photo_message
+)
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -55,6 +50,12 @@ def save_state(state):
     try:
         with open(Config.STATE_FILE, 'w', encoding='utf-8') as f:
             json.dump(state, f, indent=4)
+        # Сохранение в репозиторий
+        os.system('git config --global user.email "bot@example.com"')
+        os.system('git config --global user.name "Bot"')
+        os.system('git add state.json')
+        os.system('git commit -m "Update state.json"')
+        os.system('git push origin main')
         logging.info("Состояние успешно сохранено")
     except Exception as e:
         logging.error(f"Ошибка сохранения состояния: {e}")
@@ -71,12 +72,6 @@ def get_unique_compliment(compliments_list, used_list_key, state):
     state[used_list_key].append(compliment)
     save_state(state)
     return compliment
-
-# Функция для генерации случайного времени между 13:00 и 17:00
-def get_random_time():
-    hours = random.randint(13, 16)
-    minutes = random.randint(0, 59)
-    return f"{hours:02d}:{minutes:02d}"
 
 # Извлечение медиа (фото или видео) из поста
 def get_media_url(post):
@@ -176,7 +171,7 @@ def get_compliment(post_text, caption, media_type, state):
         return get_unique_compliment(equipment_and_studio_compliments, "equipment_and_studio_compliments_used", state)
     return get_unique_compliment(tattoo_compliments, "tattoo_compliments_used", state)
 
-# Проверка новых постов (обновлённая версия)
+# Проверка новых постов
 def check_new_post(state):
     logging.info("Начало проверки новых постов")
     last_checked = state["last_checked"]
@@ -190,7 +185,6 @@ def check_new_post(state):
             posts = response["response"]["items"]
             last_checked_date = datetime.fromisoformat(last_checked) if last_checked else None
 
-            # Ищем первый незакреплённый новый пост
             for post in posts:
                 post_id = post["id"]
                 post_date = datetime.fromtimestamp(post["date"])
@@ -199,11 +193,9 @@ def check_new_post(state):
                 logging.info(f"Обработка поста: ID={post_id}, дата={post_date}, закреплён={is_pinned}")
                 if str(post_id) not in processed_posts:
                     if not last_checked_date or post_date > last_checked_date:
-                        # Игнорируем закреплённый пост, если он старый
                         if is_pinned and last_checked_date and post_date <= last_checked_date:
                             logging.info(f"Пропуск закреплённого старого поста: ID={post_id}")
                             continue
-                        # Обновляем время последней проверки
                         state["last_checked"] = post_date.isoformat()
                         processed_posts[str(post_id)] = True
                         save_state(state)
@@ -253,66 +245,10 @@ def job(state):
         logging.error(f"Ошибка в функции job: {e}")
         save_state(state)
 
-# Планирование отправки комплиментов для "equipment_and_studio"
-def schedule_equipment_and_studio(state):
-    days = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
-    random_day = random.choice(days)
-    random_time = get_random_time()
-    getattr(schedule.every(), random_day).at(random_time).do(lambda: send_telegram_message(
-        get_unique_compliment(equipment_and_studio_compliments, "equipment_and_studio_compliments_used", state)))
-    logging.info(f"Запланирована отправка комплимента equipment_and_studio на {random_day} в {random_time}")
-
-# Запуск планировщика
-def run_scheduler(state):
-    logging.info("Запуск планировщика...")
-    schedule.every(1).minutes.do(lambda: job(state))
-    random_time_weekly = get_random_time()
-    schedule.every().monday.at(random_time_weekly).do(lambda: send_telegram_message(
-        get_unique_compliment(weekly_compliments, "weekly_compliments_used", state)))
-    logging.info(f"Запланирована отправка комплимента weekly на понедельник в {random_time_weekly}")
-    random_time_client = get_random_time()
-    schedule.every().friday.at(random_time_client).do(lambda: send_telegram_message(
-        get_unique_compliment(client_interactions_compliments, "client_interactions_compliments_used", state)))
-    logging.info(f"Запланирована отправка комплимента client_interactions на пятницу в {random_time_client}")
-    random_time_ideas = get_random_time()
-    schedule.every().wednesday.at(random_time_ideas).do(lambda: send_telegram_message(
-        get_unique_compliment(tattoo_ideas_compliments, "tattoo_ideas_compliments_used", state)))
-    logging.info(f"Запланирована отправка комплимента tattoo_ideas на среду в {random_time_ideas}")
-    schedule_equipment_and_studio(state)
-    while True:
-        try:
-            schedule.run_pending()
-            time.sleep(1)
-        except Exception as e:
-            logging.error(f"Ошибка в планировщике: {e}")
-
 if __name__ == "__main__":
     logging.info("Запуск бота... Python версия: " + sys.version)
     logging.info("Текущий каталог: " + os.getcwd())
     logging.info("Доступные файлы: " + str(os.listdir('.')))
-    try:
-        state = load_state()
-        logging.info("Состояние загружено успешно")
-        job(state)  # Первая проверка
-        scheduler_thread = threading.Thread(target=run_scheduler, args=(state,), daemon=True)
-        scheduler_thread.start()
-        app = Flask(__name__)
-
-        @app.route('/')
-        def keep_alive():
-            logging.info("Получен запрос на keep-alive от мониторинга")
-            return "Bot is alive!", 200
-
-        threading.Thread(target=app.run, kwargs={'host': '0.0.0.0', 'port': 8080, 'debug': False}, daemon=True).start()
-        logging.info("Flask-сервер запущен на порту 8080 для keep-alive")
-
-        log_counter = 0
-        while True:
-            time.sleep(60)
-            log_counter += 1
-            if log_counter >= 10:
-                logging.info("Основной цикл активен...")
-                log_counter = 0
-    except Exception as e:
-        logging.critical(f"Неожиданная критическая ошибка: {e}")
-        os.execv(sys.executable, ['python'] + sys.argv)
+    state = load_state()
+    logging.info("Состояние загружено успешно")
+    job(state)  # Выполняем проверку один раз и завершаем
