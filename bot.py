@@ -189,7 +189,13 @@ def check_new_post(state):
         logging.info(f"Ответ VK API: {response}")
         if "response" in response and response["response"]["items"]:
             posts = response["response"]["items"]
-            last_checked_date = datetime.fromisoformat(last_checked) if last_checked else None
+            last_checked_date = None
+            if last_checked:
+                try:
+                    last_checked_date = datetime.fromisoformat(last_checked)
+                except ValueError:
+                    logging.warning(f"Некорректный формат last_checked: {last_checked}, сбрасываем")
+                    last_checked_date = None
 
             for post in posts:
                 post_id = post["id"]
@@ -208,7 +214,14 @@ def check_new_post(state):
                         media_url, media_type = get_media_url(post)
                         logging.info(f"Новый пост найден: ID={post_id}, медиа={media_url}, тип={media_type}, текст={post.get('text', '')}")
                         return True, media_url, media_type, post.get("text", "")
+            # Если новых постов нет, обновляем last_checked на дату самого нового поста
+            if posts:
+                newest_post_date = max(datetime.fromtimestamp(post["date"]) for post in posts)
+                state["last_checked"] = newest_post_date.isoformat()
+                save_state(state)
             logging.info("Новых незакреплённых постов не найдено")
+        else:
+            logging.warning("Ответ VK API не содержит постов")
     except Exception as e:
         logging.error(f"Ошибка проверки постов: {e}")
     logging.info("Новых постов не найдено или произошла ошибка")
