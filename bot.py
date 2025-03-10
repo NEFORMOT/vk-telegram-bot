@@ -1,11 +1,11 @@
 import os
-import schedule
-import time
 import sys
 import json
 import random
 import logging
 import requests
+import argparse
+import subprocess
 from datetime import datetime
 from config import Config
 from image_analyzer import ImageAnalyzer
@@ -44,10 +44,9 @@ def load_state():
             "tattoo_compliments_used": [],
             "in_progress_compliments_used": [],
             "equipment_compliments_used": [],
-            "appointment_compliments_used": []
+            "appointment_compliments_used": [],
+            "last_equipment_and_studio_day": -1
         }
-
-import subprocess
 
 def save_state(state):
     logging.info("Сохранение состояния в файл...")
@@ -68,6 +67,9 @@ def save_state(state):
 
 # Функция для выбора комплимента без повторений
 def get_unique_compliment(compliments_list, used_list_key, state):
+    if not compliments_list:
+        logging.error(f"Список комплиментов для {used_list_key} пуст!")
+        return "У меня закончились комплименты, но ты всё равно молодец! 😊"
     used_compliments = state.get(used_list_key, [])
     available_compliments = [comp for comp in compliments_list if comp not in used_compliments]
     if not available_compliments:
@@ -78,12 +80,6 @@ def get_unique_compliment(compliments_list, used_list_key, state):
     state[used_list_key].append(compliment)
     save_state(state)
     return compliment
-
-# Функция для генерации случайного времени между 10:00 и 13:00
-def get_random_time():
-    hours = random.randint(10, 12)
-    minutes = random.randint(0, 59)
-    return f"{hours:02d}:{minutes:02d}"
 
 # Извлечение медиа (фото или видео) из поста
 def get_media_url(post):
@@ -115,25 +111,9 @@ def classify_media(post_text, caption, media_type):
     first_line = post_lines[0] if post_lines else ""
     rest_text = '\n'.join(post_lines[1:]) if len(post_lines) > 1 else ""
 
-    if caption_lower:
-        if any(keyword in caption_lower for keyword in appointment_keywords):
-            logging.info(f"Определён тип: appointment (по подписи: {caption_lower})")
-            return "appointment"
-        elif any(keyword in caption_lower for keyword in tattoo_keywords):
-            logging.info(f"Определён тип: tattoo (по подписи: {caption_lower})")
-            return "tattoo"
-        elif any(keyword in caption_lower for keyword in in_progress_keywords):
-            logging.info(f"Определён тип: in_progress (по подписи: {caption_lower})")
-            return "in_progress"
-        elif any(keyword in caption_lower for keyword in sketch_keywords):
-            logging.info(f"Определён тип: sketch (по подписи: {caption_lower})")
-            return "sketch"
-        elif any(keyword in caption_lower for keyword in equipment_keywords):
-            logging.info(f"Определён тип: equipment (по подписи: {caption_lower})")
-            return "equipment"
-        elif any(keyword in caption_lower for keyword in equipment_and_studio_keywords):
-            logging.info(f"Определён тип: equipment_and_studio (по подписи: {caption_lower})")
-            return "equipment_and_studio"
+    if not post_text_lower and not caption_lower and not media_type:
+        logging.warning("Нет текста, подписи или медиа для классификации, возвращаем 'tattoo' по умолчанию")
+        return "tattoo"
 
     if post_text_lower:
         if any(keyword in post_text_lower for keyword in appointment_keywords):
@@ -153,6 +133,26 @@ def classify_media(post_text, caption, media_type):
             return "equipment"
         elif any(keyword in post_text_lower for keyword in equipment_and_studio_keywords):
             logging.info(f"Определён тип: equipment_and_studio (по тексту поста: {post_text_lower})")
+            return "equipment_and_studio"
+
+    if caption_lower:
+        if any(keyword in caption_lower for keyword in appointment_keywords):
+            logging.info(f"Определён тип: appointment (по подписи: {caption_lower})")
+            return "appointment"
+        elif any(keyword in caption_lower for keyword in tattoo_keywords):
+            logging.info(f"Определён тип: tattoo (по подписи: {caption_lower})")
+            return "tattoo"
+        elif any(keyword in caption_lower for keyword in in_progress_keywords):
+            logging.info(f"Определён тип: in_progress (по подписи: {caption_lower})")
+            return "in_progress"
+        elif any(keyword in caption_lower for keyword in sketch_keywords):
+            logging.info(f"Определён тип: sketch (по подписи: {caption_lower})")
+            return "sketch"
+        elif any(keyword in caption_lower for keyword in equipment_keywords):
+            logging.info(f"Определён тип: equipment (по подписи: {caption_lower})")
+            return "equipment"
+        elif any(keyword in caption_lower for keyword in equipment_and_studio_keywords):
+            logging.info(f"Определён тип: equipment_and_studio (по подписи: {caption_lower})")
             return "equipment_and_studio"
 
     if media_type == "video":
@@ -220,7 +220,6 @@ def check_new_post(state):
                         media_url, media_type = get_media_url(post)
                         logging.info(f"Новый пост найден: ID={post_id}, медиа={media_url}, тип={media_type}, текст={post.get('text', '')}")
                         return True, media_url, media_type, post.get("text", "")
-            # Если новых постов нет, обновляем last_checked на дату самого нового поста
             if posts:
                 newest_post_date = max(datetime.fromtimestamp(post["date"]) for post in posts)
                 state["last_checked"] = newest_post_date.isoformat()
@@ -236,6 +235,12 @@ def check_new_post(state):
 # Отправка сообщения в Telegram
 def send_telegram_message(text):
     logging.info(f"Подготовка отправки сообщения в Telegram: {text}")
+    if not Config.TELEGRAM_TOKEN:
+        logging.error("TELEGRAM_TOKEN не задан, пропуск отправки сообщения")
+        return
+    if not Config.CHAT_ID_TRACKING or not Config.CHAT_ID_HER:
+        logging.error(f"CHAT_ID_TRACKING ({Config.CHAT_ID_TRACKING}) или CHAT_ID_HER ({Config.CHAT_ID_HER}) не заданы, пропуск отправки сообщения")
+        return
     url = f"https://api.telegram.org/bot{Config.TELEGRAM_TOKEN}/sendMessage"
     params_tracking = {"chat_id": Config.CHAT_ID_TRACKING, "text": text}
     params_her = {"chat_id": Config.CHAT_ID_HER, "text": text}
@@ -254,54 +259,50 @@ def send_telegram_message(text):
         logging.error(f"Ошибка отправки в Telegram: {e}")
 
 # Основная работа
-def job(state):
+def job(state, compliment_type=None):
     try:
-        logging.info("Запуск проверки постов (job)")
-        has_new_post, media_url, media_type, post_text = check_new_post(state)
-        if has_new_post:
-            logging.info("Обработка нового поста")
-            if media_url:
-                caption = analyzer.get_image_caption(media_url) if media_type == "photo" else None
-                message = get_compliment(post_text, caption, media_type, state)
+        if compliment_type:
+            logging.info(f"Отправка комплимента типа {compliment_type}")
+            if compliment_type == "weekly":
+                message = get_unique_compliment(weekly_compliments, "weekly_compliments_used", state)
+                send_telegram_message(message)
+            elif compliment_type == "client_interactions":
+                message = get_unique_compliment(client_interactions_compliments, "client_interactions_compliments_used", state)
+                send_telegram_message(message)
+            elif compliment_type == "tattoo_ideas":
+                message = get_unique_compliment(tattoo_ideas_compliments, "tattoo_ideas_compliments_used", state)
+                send_telegram_message(message)
+            elif compliment_type == "equipment_and_studio":
+                today = datetime.now().weekday()
+                if "last_equipment_and_studio_day" not in state:
+                    state["last_equipment_and_studio_day"] = -1
+                if state["last_equipment_and_studio_day"] != today:
+                    if random.random() < 1.0 / 7.0:
+                        state["last_equipment_and_studio_day"] = today
+                        message = get_unique_compliment(equipment_and_studio_compliments, "equipment_and_studio_compliments_used", state)
+                        send_telegram_message(message)
+                        logging.info("Комплимент equipment_and_studio отправлен")
+                    else:
+                        logging.info("Сегодня не отправляем equipment_and_studio комплимент")
+                else:
+                    logging.info("Комплимент equipment_and_studio уже отправлен на этой неделе")
             else:
-                message = get_compliment(post_text, None, media_type, state) if post_text else no_photo_message
-            send_telegram_message(message)
+                logging.error(f"Неизвестный тип комплимента: {compliment_type}")
+                return
+        else:
+            logging.info("Запуск проверки постов (job)")
+            has_new_post, media_url, media_type, post_text = check_new_post(state)
+            if has_new_post:
+                logging.info("Обработка нового поста")
+                if media_url:
+                    caption = analyzer.get_image_caption(media_url) if media_type == "photo" else None
+                    message = get_compliment(post_text, caption, media_type, state)
+                else:
+                    message = get_compliment(post_text, None, media_type, state) if post_text else no_photo_message
+                send_telegram_message(message)
     except Exception as e:
         logging.error(f"Ошибка в функции job: {e}")
         save_state(state)
-
-# Планирование отправки комплиментов для "equipment_and_studio"
-def schedule_equipment_and_studio(state):
-    days = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
-    random_day = random.choice(days)
-    random_time = get_random_time()
-    getattr(schedule.every(), random_day).at(random_time).do(lambda: send_telegram_message(
-        get_unique_compliment(equipment_and_studio_compliments, "equipment_and_studio_compliments_used", state)))
-    logging.info(f"Запланирована отправка комплимента equipment_and_studio на {random_day} в {random_time}")
-
-# Запуск планировщика
-def run_scheduler(state):
-    logging.info("Запуск планировщика...")
-    schedule.every(1).minutes.do(lambda: job(state))
-    random_time_weekly = get_random_time()
-    schedule.every().monday.at(random_time_weekly).do(lambda: send_telegram_message(
-        get_unique_compliment(weekly_compliments, "weekly_compliments_used", state)))
-    logging.info(f"Запланирована отправка комплимента weekly на понедельник в {random_time_weekly}")
-    random_time_client = get_random_time()
-    schedule.every().friday.at(random_time_client).do(lambda: send_telegram_message(
-        get_unique_compliment(client_interactions_compliments, "client_interactions_compliments_used", state)))
-    logging.info(f"Запланирована отправка комплимента client_interactions на пятницу в {random_time_client}")
-    random_time_ideas = get_random_time()
-    schedule.every().wednesday.at(random_time_ideas).do(lambda: send_telegram_message(
-        get_unique_compliment(tattoo_ideas_compliments, "tattoo_ideas_compliments_used", state)))
-    logging.info(f"Запланирована отправка комплимента tattoo_ideas на среду в {random_time_ideas}")
-    schedule_equipment_and_studio(state)
-    while True:
-        try:
-            schedule.run_pending()
-            time.sleep(1)
-        except Exception as e:
-            logging.error(f"Ошибка в планировщике: {e}")
 
 if __name__ == "__main__":
     logging.info("Запуск бота... Python версия: " + sys.version)
@@ -309,4 +310,7 @@ if __name__ == "__main__":
     logging.info("Доступные файлы: " + str(os.listdir('.')))
     state = load_state()
     logging.info("Состояние загружено успешно")
-    job(state)  # Выполняем проверку один раз и завершаем
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--compliment-type', type=str, help='Type of compliment to send')
+    args = parser.parse_args()
+    job(state, args.compliment_type)
