@@ -2,8 +2,8 @@ name: Run VK Telegram Bot
 
 on:
   schedule:
-    - cron: '*/5 * * * *'  # Запуск каждые 5 минут
-  workflow_dispatch:      # Позволяет запускать вручную
+    - cron: '*/5 * * * *'  # Автоматический запуск каждые 5 минут
+  workflow_dispatch:      # Ручной запуск
 
 jobs:
   bot:
@@ -12,7 +12,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
         with:
-          fetch-depth: 0  # Для работы с git push
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -31,14 +31,16 @@ jobs:
           GROUP_ID: ${{ secrets.GROUP_ID }}
           CHAT_ID_TRACKING: ${{ secrets.CHAT_ID_TRACKING }}
           CHAT_ID_HER: ${{ secrets.CHAT_ID_HER }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          YNDX_API_KEY: ${{ secrets.YNDX_API_KEY }}
         run: python bot.py
 
       - name: Commit and push state
-  run: |
-    git config --global user.email "bot@example.com"
-    git config --global user.name "Bot"
-    git add state.json || echo "No state.json to add"
-    git commit -m "Update state.json" || echo "No changes to commit"
-    git push origin main
-  env:
-    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config --global user.email "bot@example.com"
+          git config --global user.name "Bot"
+          git add state.json || echo "No state.json to add"
+          git commit -m "Update state.json" || echo "No changes to commit"
+          git push origin main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
