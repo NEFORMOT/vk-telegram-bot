@@ -6,6 +6,7 @@ import logging
 import requests
 import argparse
 import subprocess
+import schedule
 from datetime import datetime
 from config import Config
 from image_analyzer import ImageAnalyzer
@@ -273,19 +274,8 @@ def job(state, compliment_type=None):
                 message = get_unique_compliment(tattoo_ideas_compliments, "tattoo_ideas_compliments_used", state)
                 send_telegram_message(message)
             elif compliment_type == "equipment_and_studio":
-                today = datetime.now().weekday()
-                if "last_equipment_and_studio_day" not in state:
-                    state["last_equipment_and_studio_day"] = -1
-                if state["last_equipment_and_studio_day"] != today:
-                    if random.random() < 1.0 / 7.0:
-                        state["last_equipment_and_studio_day"] = today
-                        message = get_unique_compliment(equipment_and_studio_compliments, "equipment_and_studio_compliments_used", state)
-                        send_telegram_message(message)
-                        logging.info("Комплимент equipment_and_studio отправлен")
-                    else:
-                        logging.info("Сегодня не отправляем equipment_and_studio комплимент")
-                else:
-                    logging.info("Комплимент equipment_and_studio уже отправлен на этой неделе")
+                message = get_unique_compliment(equipment_and_studio_compliments, "equipment_and_studio_compliments_used", state)
+                send_telegram_message(message)
             else:
                 logging.error(f"Неизвестный тип комплимента: {compliment_type}")
                 return
@@ -304,6 +294,47 @@ def job(state, compliment_type=None):
         logging.error(f"Ошибка в функции job: {e}")
         save_state(state)
 
+# Функция для генерации случайного времени между 10:00 и 13:00
+def get_random_time():
+    hours = random.randint(10, 12)
+    minutes = random.randint(0, 59)
+    return f"{hours:02d}:{minutes:02d}"
+
+# Планирование отправки комплиментов для "equipment_and_studio"
+def schedule_equipment_and_studio(state):
+    days = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+    random_day = random.choice(days)
+    random_time = get_random_time()
+    getattr(schedule.every(), random_day).at(random_time).do(lambda: send_telegram_message(
+        get_unique_compliment(equipment_and_studio_compliments, "equipment_and_studio_compliments_used", state)))
+    logging.info(f"Запланирована отправка комплимента equipment_and_studio на {random_day} в {random_time}")
+
+# Запуск планировщика
+def run_scheduler(state):
+    logging.info("Запуск планировщика...")
+    schedule.every(1).minutes.do(lambda: job(state))
+    random_time_weekly = get_random_time()
+    schedule.every().monday.at(random_time_weekly).do(lambda: send_telegram_message(
+        get_unique_compliment(weekly_compliments, "weekly_compliments_used", state)))
+    logging.info(f"Запланирована отправка комплимента weekly на понедельник в {random_time_weekly}")
+    random_time_client = get_random_time()
+    schedule.every().friday.at(random_time_client).do(lambda: send_telegram_message(
+        get_unique_compliment(client_interactions_compliments, "client_interactions_compliments_used", state)))
+    logging.info(f"Запланирована отправка комплимента client_interactions на пятницу в {random_time_client}")
+    random_time_ideas = get_random_time()
+    schedule.every().wednesday.at(random_time_ideas).do(lambda: send_telegram_message(
+        get_unique_compliment(tattoo_ideas_compliments, "tattoo_ideas_compliments_used", state)))
+    logging.info(f"Запланирована отправка комплимента tattoo_ideas на среду в {random_time_ideas}")
+    schedule_equipment_and_studio(state)
+    while True:
+        try:
+            schedule.run_pending()
+            time.sleep(1)
+        except Exception as e:
+            logging.error(f"Ошибка в планировщике: {e}")
+
+import time  # Добавляем импорт time для sleep
+
 if __name__ == "__main__":
     logging.info("Запуск бота... Python версия: " + sys.version)
     logging.info("Текущий каталог: " + os.getcwd())
@@ -313,4 +344,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--compliment-type', type=str, help='Type of compliment to send')
     args = parser.parse_args()
-    job(state, args.compliment_type)
+    if args.compliment_type:
+        job(state, args.compliment_type)
+    else:
+        # Запускаем цикл планирования
+        run_scheduler(state)
