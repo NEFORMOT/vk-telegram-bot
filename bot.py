@@ -73,6 +73,12 @@ def get_unique_compliment(compliments_list, used_list_key, state):
     save_state(state)
     return compliment
 
+# Функция для генерации случайного времени между 10:00 и 13:00
+def get_random_time():
+    hours = random.randint(10, 12)
+    minutes = random.randint(0, 59)
+    return f"{hours:02d}:{minutes:02d}"
+
 # Извлечение медиа (фото или видео) из поста
 def get_media_url(post):
     logging.info("Извлечение URL медиа из поста")
@@ -244,6 +250,39 @@ def job(state):
     except Exception as e:
         logging.error(f"Ошибка в функции job: {e}")
         save_state(state)
+
+# Планирование отправки комплиментов для "equipment_and_studio"
+def schedule_equipment_and_studio(state):
+    days = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+    random_day = random.choice(days)
+    random_time = get_random_time()
+    getattr(schedule.every(), random_day).at(random_time).do(lambda: send_telegram_message(
+        get_unique_compliment(equipment_and_studio_compliments, "equipment_and_studio_compliments_used", state)))
+    logging.info(f"Запланирована отправка комплимента equipment_and_studio на {random_day} в {random_time}")
+
+# Запуск планировщика
+def run_scheduler(state):
+    logging.info("Запуск планировщика...")
+    schedule.every(1).minutes.do(lambda: job(state))
+    random_time_weekly = get_random_time()
+    schedule.every().monday.at(random_time_weekly).do(lambda: send_telegram_message(
+        get_unique_compliment(weekly_compliments, "weekly_compliments_used", state)))
+    logging.info(f"Запланирована отправка комплимента weekly на понедельник в {random_time_weekly}")
+    random_time_client = get_random_time()
+    schedule.every().friday.at(random_time_client).do(lambda: send_telegram_message(
+        get_unique_compliment(client_interactions_compliments, "client_interactions_compliments_used", state)))
+    logging.info(f"Запланирована отправка комплимента client_interactions на пятницу в {random_time_client}")
+    random_time_ideas = get_random_time()
+    schedule.every().wednesday.at(random_time_ideas).do(lambda: send_telegram_message(
+        get_unique_compliment(tattoo_ideas_compliments, "tattoo_ideas_compliments_used", state)))
+    logging.info(f"Запланирована отправка комплимента tattoo_ideas на среду в {random_time_ideas}")
+    schedule_equipment_and_studio(state)
+    while True:
+        try:
+            schedule.run_pending()
+            time.sleep(1)
+        except Exception as e:
+            logging.error(f"Ошибка в планировщике: {e}")
 
 if __name__ == "__main__":
     logging.info("Запуск бота... Python версия: " + sys.version)
