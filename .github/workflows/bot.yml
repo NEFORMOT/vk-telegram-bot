@@ -1,19 +1,34 @@
-- name: Debug environment
-  run: |
-    echo "VK_TOKEN: $VK_TOKEN"
-    echo "TELEGRAM_TOKEN: $TELEGRAM_TOKEN"
-    echo "GROUP_ID: $GROUP_ID"
-    echo "CHAT_ID_TRACKING: $CHAT_ID_TRACKING"
-    echo "CHAT_ID_HER: $CHAT_ID_HER"
-    echo "HF_TOKEN: $HF_TOKEN"
-    echo "YNDX_API_KEY: $YNDX_API_KEY"
-    echo "GITHUB_TOKEN: $GITHUB_TOKEN"
-  env:
-    VK_TOKEN: ${{ secrets.VK_TOKEN }}
-    TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-    GROUP_ID: ${{ secrets.GROUP_ID }}
-    CHAT_ID_TRACKING: ${{ secrets.CHAT_ID_TRACKING }}
-    CHAT_ID_HER: ${{ secrets.CHAT_ID_HER }}
-    HF_TOKEN: ${{ secrets.HF_TOKEN }}
-    YNDX_API_KEY: ${{ secrets.YNDX_API_KEY }}
-    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+name: Run VK Telegram Bot
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'  # Проверка каждые 5 минут
+  workflow_dispatch:  # Добавляем принудительный запуск
+
+jobs:
+  bot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+      - run: pip install -r requirements.txt
+      - run: python bot.py
+        env:
+          VK_TOKEN: ${{ secrets.VK_TOKEN }}
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          GROUP_ID: ${{ secrets.GROUP_ID }}
+          CHAT_ID_TRACKING: ${{ secrets.CHAT_ID_TRACKING }}
+          CHAT_ID_HER: ${{ secrets.CHAT_ID_HER }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          YNDX_API_KEY: ${{ secrets.YNDX_API_KEY }}
+      - name: Commit and push state
+        run: |
+          git config --global user.email "bot@example.com"
+          git config --global user.name "Bot"
+          git add state.json || echo "No state.json to add"
+          git commit -m "Update state.json" || echo "No changes to commit"
+          git push origin main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
