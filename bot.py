@@ -347,5 +347,4 @@ if __name__ == "__main__":
     if args.compliment_type:
         job(state, args.compliment_type)
     else:
-        # Запускаем цикл планирования
         run_scheduler(state)
